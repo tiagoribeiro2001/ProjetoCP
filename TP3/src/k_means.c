@@ -1,5 +1,7 @@
 #include "../include/utils.h"
 
+// ---------------------------------------     Variáveis Globais     -------------------------------------------
+
 // Contador da iteracoes
 int iteration = 0;
 
@@ -36,8 +38,23 @@ float *sumX;
 //Array dos somatórios da coordenada Y dos pontos de cada cluster
 float *sumY;
 
+// Set up GPU data
+int* gpu_clust;
+float* gpu_coordX;
+float* gpu_coordY;
+float* gpu_centroidX;
+float* gpu_centroidY;
+int* gpu_size;
+float* gpu_sumX;
+float* gpu_sumY;
+
+
+
+// ---------------------------------------     Funções     -------------------------------------------
+
+
 // Funcao que inicializa a lista de pontos e os clusters de forma aleatoria
-void inicializa(int npontos, int nclusters) {
+__global__ void inicializa(int npontos, int nclusters) {
 
     srand(10);
 
@@ -65,7 +82,7 @@ void inicializa(int npontos, int nclusters) {
 }
 
 // Funcao que atribui todas as amostras ao seu devido cluster
-void atribuiCluster(){
+__global__ void atribuiCluster(){
 
     int conv = 1;
 
@@ -77,7 +94,7 @@ void atribuiCluster(){
     }
 
     // Percorre a lista de amostras e atribui-as a um cluster
-    #pragma omp parallel for num_threads(number_wires)
+    //#pragma omp parallel for num_threads(number_wires)
     for(int i = 0; i < number_points; i++){
 
         // Fórmula da distancia euclidiana
@@ -106,7 +123,7 @@ void atribuiCluster(){
 }
 
 // Funcao que calcula o centroid de cada cluster
-void calculaCentroid(){
+__global__ void calculaCentroid(){
     for(int i = 0; i < number_clusters; i++){
         // O centroid e calculado a partir da media de todos os pontos do cluster
         float mediaX = sumX[i] / size[i];
@@ -125,6 +142,11 @@ void printInfo(){
     printf("Iterations: %d\n", iteration);
 }
 
+
+
+
+// -----------------------------------------     Main     ------------------------------------------
+
 int main(int argc, char*argv[]){
 
     // Verifica se o número de argumentos passados são os corretos
@@ -141,14 +163,54 @@ int main(int argc, char*argv[]){
     double itime, ftime, exec_time;
     itime = omp_get_wtime();
 
+
+    // Mallocar as variáveis globais
+    cudaMalloc(&gpu_clust, number_points * sizeof(int));
+    cudaMalloc(&gpu_coordX, number_points * sizeof(float));
+    cudaMalloc(&gpu_coordY, number_points * sizeof(float));
+    cudaMalloc(&gpu_centroidX, number_clusters * sizeof(float));
+    cudaMalloc(&gpu_centroidY, number_clusters * sizeof(float));
+    cudaMalloc(&gpu_size, number_clusters * sizeof(int));
+    cudaMalloc(&gpu_sumX, number_clusters * sizeof(float));
+    cudaMalloc(&gpu_sumY, number_clusters * sizeof(float));
+
+    // Copy data and clusters to the GPU
+    cudaMemcpy(gpu_clust, clust, number_points * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_coordX, coordX, number_points * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_centroidX, centroidX, number_clusters * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_centroidY, centroidY, number_clusters * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_size, size, number_clusters * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_sumX, sumX, number_clusters * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_sumY, sumY, number_clusters * sizeof(float), cudaMemcpyHostToDevice);
+
     // Algoritmo de Lloyd
-    inicializa(number_points, number_clusters);
-    atribuiCluster();
+    inicializa<<<1, number_points>>>(number_points, number_clusters);
+    atribuiCluster<<<1, 1>>>();
     while(iteration < 20) {
-        calculaCentroid();
-        atribuiCluster();
+        calculaCentroid<<<1, number_clusters>>>();
+        atribuiCluster<<<1, 1>>>();
         iteration++;
     }
+
+    // Copy results back to host
+    cudaMemcpy(gpu_clust, clust, number_points * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpu_coordX, coordX, number_points * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpu_centroidX, centroidX, number_clusters * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpu_centroidY, centroidY, number_clusters * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpu_size, size, number_clusters * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpu_sumX, sumX, number_clusters * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpu_sumY, sumY, number_clusters * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Clean up GPU memory
+    cudaFree(gpu_clust);
+    cudaFree(gpu_coordX);
+    cudaFree(gpu_coordY);
+    cudaFree(gpu_centroidX);
+    cudaFree(gpu_centroidY);
+    cudaFree(gpu_size);
+    cudaFree(gpu_sumX);
+    cudaFree(gpu_sumY);
+
     printInfo();
 
     ftime = omp_get_wtime();
