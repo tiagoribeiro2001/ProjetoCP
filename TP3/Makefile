@@ -1,22 +1,36 @@
-CC       = gcc
-BIN      = bin/
-SRC      = src/
-INCLUDES = include/
-EXEC     = k_means
-THREADS  = 16
+BIN_NAME = k_means
 
-CFLAGS = -O2 -fopenmp -std=c99 -Ofast -fomit-frame-pointer -ftree-vectorize -funroll-loops -msse4
+CXX = nvcc
+LD  = nvcc
 
-.DEFAULT_GOAL = k_means
+CXXFLAGS   = -O2 -g -std=c++11 -arch=sm_35 -Wno-deprecated-gpu-targets 
 
-k_means: $(SRC)k_means.c
-	$(CC) $(CFLAGS) $(SRC)k_means.c -o $(BIN)$(EXEC)
+SRC_DIR = src
+BIN_DIR = bin
+BUILD_DIR = build
+SRC = $(wildcard $(SRC_DIR)/*.cu)
+OBJ = $(patsubst src/%.cu,build/%.o,$(SRC))
+BIN = $(BIN_NAME)
+
+vpath %.cu $(SRC_DIR)
+
+################################################################################
+# Rules
+################################################################################
+
+.DEFAULT_GOAL = all
+
+$(BUILD_DIR)/%.o: %.cu
+	$(CXX) -c $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
+
+$(BIN_DIR)/$(BIN_NAME): $(OBJ)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(OBJ) $(LIBS)
+
+checkdirs:
+	@mkdir -p $(BUILD_DIR)
+	@mkdir -p $(BIN_DIR)
+
+all: checkdirs $(BIN_DIR)/$(BIN_NAME)
 
 clean:
-	rm -r bin/*
-
-runseq:
-	./$(BIN)$(EXEC) 10000000 $(CP_CLUSTERS) 1
-
-runpar:
-	./$(BIN)$(EXEC) 10000000 $(CP_CLUSTERS) $(THREADS)
+	rm -f $(BUILD_DIR)/* $(BIN_DIR)/* 
