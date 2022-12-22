@@ -3,17 +3,13 @@
 // ---------------------------------------     Variáveis Globais     -------------------------------------------
 
 #define NUMBER_CLUSTERS 4
-#define NUMBER_POINTS 1000000
+#define NUMBER_POINTS 10000000
 
 // Set up GPU data
 
-int* gpu_convergiu;
 float* gpu_points;
 float* gpu_centroid;
-float* gpu_sum;
-int* gpu_size;
 int* gpu_cluster_attribution;
-int* gpu_prev_cluster_attribution;
 
 // ---------------------------------------     Funções     -------------------------------------------
 
@@ -37,14 +33,11 @@ __host__ void inicializa(float *points, float *centroid){
 }
 
 // Funcao que atribui todas as amostras ao seu devido cluster
-__global__ void atribuiCluster(float *points, float *centroid, float *sum, int *size, int *cluster_attribution, int *prev_cluster_attribution){
-
+__global__ void atribuiCluster(float *points, float *centroid, int *cluster_attribution){
 
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= NUMBER_POINTS) return;
-
-    // Percorre a lista de amostras e atribui-as a um cluster
     
     // Fórmula da distancia euclidiana
     float min = ((centroid[0] - points[index * 2]) * (centroid[0] - points[index * 2])) + ((centroid[1] - points[index * 2 + 1]) * (centroid[1] - points[index * 2 + 1]));
@@ -64,33 +57,31 @@ __global__ void atribuiCluster(float *points, float *centroid, float *sum, int *
 }
 
 // Funcao que calcula o centroid de cada cluster
-__global__ void calculaCentroid(float *points, float *centroid, float *sum, int *size, int *cluster_attribution){
+__host__ void calculaCentroid(float *points, float *centroid, float *sum, int *size, int *cluster_attribution){
 
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index >= NUMBER_CLUSTERS) return;
-
-    sum[index * 2] = 0;
-    sum[index * 2 + 1] = 0;    
-    size[index] = 0;
+    for(int i = 0; i < NUMBER_CLUSTERS; i++){
+        sum[i * 2] = 0;
+        sum[i * 2 + 1] = 0;    
+        size[i] = 0;
+    }
 
     for (int i = 0; i < NUMBER_POINTS; i++) {
         int clust = cluster_attribution[i];
-        if (clust == index){
-            sum[clust * 2] +=  points[i * 2];
-            sum[clust * 2 + 1] += points[i * 2 + 1];
-            size[clust]++;
-        }
+        sum[clust * 2] +=  points[i * 2];
+        sum[clust * 2 + 1] += points[i * 2 + 1];
+        size[clust]++;
     }
 
     // O centroid e calculado a partir da media de todos os pontos do cluster
-    float mediaX = sum[index * 2] / size[index];
-    float mediaY = sum[index * 2 + 1] / size[index];
-    centroid[index * 2] = mediaX;
-    centroid[index * 2 + 1] = mediaY;
+    for(int i = 0; i < NUMBER_CLUSTERS; i++){
+        float mediaX = sum[i * 2] / size[i];
+        float mediaY = sum[i * 2 + 1] / size[i];
+        centroid[i * 2] = mediaX;
+        centroid[i * 2 + 1] = mediaY;
+    }
 }
 
-__global__ void verificaConverge(int *convergiu, int *cluster_attribution, int *prev_cluster_attribution){
+__host__ int verificaConverge(int *cluster_attribution, int *prev_cluster_attribution){
     int conv = 1;
 
     for(int i = 0; i < NUMBER_POINTS; i++){
@@ -99,7 +90,7 @@ __global__ void verificaConverge(int *convergiu, int *cluster_attribution, int *
         }
     }
 
-    *convergiu = conv;
+    return conv;
 }
 
 // Funcao que imprime informacao relativa ao estado final do programa
@@ -108,7 +99,7 @@ __host__ void printInfo(int iteration, float *centroid, int *size){
     for (int i = 0; i < NUMBER_CLUSTERS; i++){
         printf("Center: (%.3f, %.3f) : Size %d\n", centroid[i * 2], centroid[i * 2 + 1], size[i]);
     }
-    printf("Iterations: %d\n", iteration);
+    printf("Iterations: %d\n", iteration - 1);
 }
 
 
@@ -141,55 +132,48 @@ int main(int argc, char*argv[]){
     inicializa(points, centroid);
     
     // Mallocar as variáveis
-    cudaMalloc(&gpu_convergiu, sizeof(int));
     cudaMalloc(&gpu_points, NUMBER_POINTS * 2 * sizeof(float));
     cudaMalloc(&gpu_centroid, NUMBER_CLUSTERS * 2 * sizeof(float));
-    cudaMalloc(&gpu_sum, NUMBER_CLUSTERS * 2 * sizeof(float));
-    cudaMalloc(&gpu_size, NUMBER_CLUSTERS * sizeof(int));
     cudaMalloc(&gpu_cluster_attribution, NUMBER_POINTS * sizeof(int));
-    cudaMalloc(&gpu_prev_cluster_attribution, NUMBER_POINTS * sizeof(int));
     
     // Copy data and clusters to the GPU
-    cudaMemcpy(gpu_convergiu, &convergiu, sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_points, points, NUMBER_POINTS * 2 * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_centroid, centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(gpu_sum, sum, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(gpu_size, size, NUMBER_CLUSTERS * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_cluster_attribution, cluster_attribution, NUMBER_POINTS * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(gpu_prev_cluster_attribution, prev_cluster_attribution, NUMBER_POINTS * sizeof(int), cudaMemcpyHostToDevice);
 
     int numberThreads = min(1024, NUMBER_POINTS);
     int numberBlocks = (NUMBER_POINTS / numberThreads) + 1;
 
 
     // Algoritmo de Lloyd
-    while (iteration < 20 || !convergiu) {
+    while (iteration < 50 && convergiu != 1) {
 
-        cudaMemcpy(gpu_prev_cluster_attribution, gpu_cluster_attribution, NUMBER_POINTS * sizeof(int), cudaMemcpyDeviceToDevice);
+        atribuiCluster<<<numberBlocks, numberThreads>>>(gpu_points, gpu_centroid, gpu_cluster_attribution);
 
-        atribuiCluster<<<numberBlocks, numberThreads>>>(gpu_points, gpu_centroid, gpu_sum, gpu_size, gpu_cluster_attribution, gpu_prev_cluster_attribution);
+        // Copia os valores do cluster_attribution para o prev_cluster_attribution
+        memcpy(prev_cluster_attribution, cluster_attribution, NUMBER_POINTS * sizeof(int));
 
-        calculaCentroid<<<NUMBER_CLUSTERS, 1>>>(gpu_points, gpu_centroid, gpu_sum, gpu_size, gpu_cluster_attribution);
+        // Atualiza os valores na memoria com as novas atribuicoes dos clusters
+        cudaMemcpy(cluster_attribution, gpu_cluster_attribution, NUMBER_POINTS * sizeof(int), cudaMemcpyDeviceToHost);
+        
+        // Atualiza os valores dos centroides na memoria com os novos valores presentes na GPU
+        cudaMemcpy(centroid, gpu_centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyDeviceToHost);
 
-        verificaConverge<<<1, 1>>>(gpu_convergiu, gpu_cluster_attribution, gpu_prev_cluster_attribution);
+        calculaCentroid(points, centroid, sum, size, cluster_attribution);
 
-        cudaMemcpy(&convergiu, gpu_convergiu, sizeof(int), cudaMemcpyDeviceToHost);
+        // Envia os novos centroides para a GPU
+        cudaMemcpy(gpu_centroid, centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyHostToDevice);
+
+
+        convergiu = verificaConverge(cluster_attribution, prev_cluster_attribution);
 
         iteration++;
     }
 
-    // Copy results back to host
-    cudaMemcpy(centroid, gpu_centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(size, gpu_size, NUMBER_CLUSTERS * sizeof(int), cudaMemcpyDeviceToHost);
-
     // Clean up GPU memory
-    cudaFree(gpu_convergiu);
     cudaFree(gpu_points);
     cudaFree(gpu_centroid);
-    cudaFree(gpu_sum);
-    cudaFree(gpu_size);
     cudaFree(gpu_cluster_attribution);
-    cudaFree(gpu_prev_cluster_attribution);
 
     printInfo(iteration, centroid, size);
 
