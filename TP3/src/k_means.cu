@@ -156,14 +156,10 @@ int main(int argc, char*argv[]){
         // Atualiza os valores na memoria com as novas atribuicoes dos clusters
         cudaMemcpy(cluster_attribution, gpu_cluster_attribution, NUMBER_POINTS * sizeof(int), cudaMemcpyDeviceToHost);
         
-        // Atualiza os valores dos centroides na memoria com os novos valores presentes na GPU
-        cudaMemcpy(centroid, gpu_centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyDeviceToHost);
-
         calculaCentroid(points, centroid, sum, size, cluster_attribution);
 
         // Envia os novos centroides para a GPU
         cudaMemcpy(gpu_centroid, centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyHostToDevice);
-
 
         convergiu = verificaConverge(cluster_attribution, prev_cluster_attribution);
 
@@ -176,6 +172,13 @@ int main(int argc, char*argv[]){
     cudaFree(gpu_cluster_attribution);
 
     printInfo(iteration, centroid, size);
+
+    free(points);
+    free(centroid);
+    free(sum);
+    free(size);
+    free(cluster_attribution);
+    free(prev_cluster_attribution);
 
     end = clock();
     elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
