@@ -141,7 +141,14 @@ int main(int argc, char*argv[]){
     cudaMemcpy(gpu_centroid, centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_cluster_attribution, cluster_attribution, NUMBER_POINTS * sizeof(int), cudaMemcpyHostToDevice);
 
-    int numberThreads = min(1024, NUMBER_POINTS);
+    int device;
+    cudaGetDevice(&device);
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+
+    int max_threads_per_block = prop.maxThreadsPerBlock;
+
+    int numberThreads = min(max_threads_per_block, NUMBER_POINTS);
     int numberBlocks = (NUMBER_POINTS / numberThreads) + 1;
 
 
