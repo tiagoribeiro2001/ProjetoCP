@@ -5,8 +5,7 @@
 #define NUMBER_CLUSTERS 4
 #define NUMBER_POINTS 10000000
 
-// Set up GPU data
-
+// Dados da GPU
 float* gpu_points;
 float* gpu_centroid;
 int* gpu_cluster_attribution;
@@ -83,6 +82,7 @@ __host__ void calculaCentroid(float *points, float *centroid, float *sum, int *s
     }
 }
 
+// Verifica se o algoritmo convergiu
 __host__ int verificaConverge(int *cluster_attribution, int *prev_cluster_attribution){
     int conv = 1;
 
@@ -92,6 +92,7 @@ __host__ int verificaConverge(int *cluster_attribution, int *prev_cluster_attrib
         }
     }
 
+    // Retorna 1 se convergiu e 0 se nao
     return conv;
 }
 
