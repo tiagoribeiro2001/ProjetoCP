@@ -59,12 +59,14 @@ __global__ void atribuiCluster(float *points, float *centroid, int *cluster_attr
 // Funcao que calcula o centroid de cada cluster
 __host__ void calculaCentroid(float *points, float *centroid, float *sum, int *size, int *cluster_attribution){
 
+    // Reseta os somatorios
     for(int i = 0; i < NUMBER_CLUSTERS; i++){
         sum[i * 2] = 0;
         sum[i * 2 + 1] = 0;    
         size[i] = 0;
     }
 
+    // Faz os somatorios
     for (int i = 0; i < NUMBER_POINTS; i++) {
         int clust = cluster_attribution[i];
         sum[clust * 2] +=  points[i * 2];
@@ -112,8 +114,8 @@ int main(int argc, char*argv[]){
 
     start = clock();
 
+    // Inicializacao de variaveis
     int iteration = 0;
-
     int convergiu = 0;
     float *points;
     float *centroid;
@@ -122,6 +124,7 @@ int main(int argc, char*argv[]){
     int *cluster_attribution;
     int *prev_cluster_attribution;
 
+    // Aloca memoria
     points = (float *) malloc(sizeof(float) * NUMBER_POINTS * 2);
     centroid = (float *) malloc(sizeof(float) * NUMBER_CLUSTERS * 2);
     sum = (float *) malloc(sizeof(float) * NUMBER_CLUSTERS * 2);
@@ -129,6 +132,7 @@ int main(int argc, char*argv[]){
     cluster_attribution = (int *) malloc(sizeof(int) * NUMBER_POINTS);
     prev_cluster_attribution = (int *) malloc(sizeof(int) * NUMBER_POINTS);
 
+    // Insere valores nos arrays dos pontos e centroides
     inicializa(points, centroid);
     
     // Mallocar as variáveis
@@ -141,11 +145,11 @@ int main(int argc, char*argv[]){
     cudaMemcpy(gpu_centroid, centroid, NUMBER_CLUSTERS * 2 * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_cluster_attribution, cluster_attribution, NUMBER_POINTS * sizeof(int), cudaMemcpyHostToDevice);
 
+    // Determina o numero maximo de threads por bloco da maquina
     int device;
     cudaGetDevice(&device);
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, device);
-
     int max_threads_per_block = prop.maxThreadsPerBlock;
 
     int numberThreads = min(max_threads_per_block, NUMBER_POINTS);
@@ -153,7 +157,7 @@ int main(int argc, char*argv[]){
 
 
     // Algoritmo de Lloyd
-    while (iteration < 50 && convergiu != 1) {
+    while (iteration < 51 && convergiu != 1) {
 
         atribuiCluster<<<numberBlocks, numberThreads>>>(gpu_points, gpu_centroid, gpu_cluster_attribution);
 
@@ -173,13 +177,14 @@ int main(int argc, char*argv[]){
         iteration++;
     }
 
-    // Clean up GPU memory
+    // Libertar a memoria da GPU
     cudaFree(gpu_points);
     cudaFree(gpu_centroid);
     cudaFree(gpu_cluster_attribution);
 
     printInfo(iteration, centroid, size);
 
+    // Libertar a memoria
     free(points);
     free(centroid);
     free(sum);
