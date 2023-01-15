@@ -38,7 +38,7 @@ __host__ void inicializa(point *points, point *centroids, sumThread *sumThreads,
     }
 }
 
-__global__ void atribuiCluster(point *points, point *centroid, sumThread *sumThreads, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
+__global__ void calculaCluster(point *points, point *centroid, sumThread *sumThreads, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
 
     // Numero total de threads
     int total_threads = number_blocks * number_threadspblock;
@@ -161,7 +161,7 @@ int main(int argc, char*argv[]){
     cudaMemcpy(gpu_sizes, sizes, number_clusters * sizeof(int), cudaMemcpyHostToDevice);
 
     while(iteration < 21) {
-        atribuiCluster<<<number_blocks, number_threadspblock>>>(gpu_points, gpu_centroids, gpu_sumThreads, number_points, number_clusters, number_blocks, number_threadspblock);
+        calculaCluster<<<number_blocks, number_threadspblock>>>(gpu_points, gpu_centroids, gpu_sumThreads, number_points, number_clusters, number_blocks, number_threadspblock);
         calculaCentroids<<<1, number_clusters>>>(gpu_centroids, gpu_sumThreads, gpu_sizes, number_clusters, number_blocks, number_threadspblock);
         iteration++;
     }
