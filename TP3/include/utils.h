@@ -4,8 +4,20 @@
 #include <math.h>
 #include <cuda.h>
 
-__host__ void  inicializa(float *, float *);
-__global__ void  atribuiCluster(float *, float *, int *);
-__host__ void calculaCentroid(float *, float *, float *, int *, int *);
-__host__ int verificaConverge(int *, int *);
-__host__ void printInfo(int, float*, int *);
+// Estrutura de dados do ponto
+typedef struct Point{
+    float x;
+    float y;
+} point;
+
+// Estrutura de dados de cluster
+typedef struct Cluster{
+    float sum_x;
+    float sum_y;
+    int size;
+} cluster;
+
+__host__ void inicializa(point *, point *, cluster *, int *, int, int, int, int);
+__global__ void atribuiCluster(point *, point *, cluster *, int, int, int, int);
+__global__ void calculaCentroids(point *, cluster*, int *, int, int, int);
+__host__ void printInfo(int, point *, int *, int, int);
