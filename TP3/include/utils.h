@@ -11,13 +11,13 @@ typedef struct Point{
 } point;
 
 // Estrutura de dados de cluster
-typedef struct Cluster{
+typedef struct SumThread{
     float sum_x;
     float sum_y;
     int size;
-} cluster;
+} sumThread;
 
-__host__ void inicializa(point *, point *, cluster *, int *, int, int, int, int);
-__global__ void atribuiCluster(point *, point *, cluster *, int, int, int, int);
-__global__ void calculaCentroids(point *, cluster*, int *, int, int, int);
+__host__ void inicializa(point *, point *, sumThread *, int *, int, int, int, int);
+__global__ void atribuiCluster(point *, point *, sumThread *, int, int, int, int);
+__global__ void calculaCentroids(point *, sumThread *, int *, int, int, int);
 __host__ void printInfo(int, point *, int *, int, int);

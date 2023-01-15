@@ -11,7 +11,7 @@ int* gpu_cluster_attribution;
 
 
 // Funcao que inicializa a lista de pontos e os clusters de forma aleatoria
-__host__ void inicializa(point *points, point *centroids, cluster *clusters, int *sizes, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
+__host__ void inicializa(point *points, point *centroids, sumThread *sumThreads, int *sizes, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
 
     srand(10);
     
@@ -28,9 +28,9 @@ __host__ void inicializa(point *points, point *centroids, cluster *clusters, int
     }
 
     for(int i = 0; i < number_blocks * number_threadspblock; i++){
-        clusters[i].sum_x = 0;
-        clusters[i].sum_y = 0;
-        clusters[i].size = 0;
+        sumThreads[i].sum_x = 0;
+        sumThreads[i].sum_y = 0;
+        sumThreads[i].size = 0;
     }
 
     for(int i = 0; i < number_clusters; i++){
@@ -38,7 +38,7 @@ __host__ void inicializa(point *points, point *centroids, cluster *clusters, int
     }
 }
 
-__global__ void atribuiCluster(point *points, point *centroid, cluster *clusters, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
+__global__ void atribuiCluster(point *points, point *centroid, sumThread *sumThreads, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
 
     // Numero total de threads
     int total_threads = number_blocks * number_threadspblock;
@@ -62,13 +62,13 @@ __global__ void atribuiCluster(point *points, point *centroid, cluster *clusters
         }
 
         // Soma ao cluster mais proximo, no espaco designado da thread
-        clusters[index * number_clusters + c].sum_x += points[i].x;
-        clusters[index * number_clusters + c].sum_y += points[i].y;
-        clusters[index * number_clusters + c].size++;
+        sumThreads[index * number_clusters + c].sum_x += points[i].x;
+        sumThreads[index * number_clusters + c].sum_y += points[i].y;
+        sumThreads[index * number_clusters + c].size++;
     }
 }
 
-__global__ void calculaCentroids(point *centroid, cluster* clusters, int * sizes, int number_clusters, int number_blocks, int number_threadspblock){
+__global__ void calculaCentroids(point *centroid, sumThread* sumThreads, int * sizes, int number_clusters, int number_blocks, int number_threadspblock){
 
     // Id da thread
     int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -81,13 +81,13 @@ __global__ void calculaCentroids(point *centroid, cluster* clusters, int * sizes
     // Percorre o array clusters e efetua o somatorio dos somatorios efetuados por cada thread no kernel anterior
     for (int i = index; i < number_blocks * number_threadspblock * number_clusters; i += number_clusters){
         // Efetua o somatorio das coordenadas
-        centroid[index].x += clusters[i].sum_x;
-        centroid[index].y += clusters[i].sum_y;
-        sizes[index] += clusters[i].size;
+        centroid[index].x += sumThreads[i].sum_x;
+        centroid[index].y += sumThreads[i].sum_y;
+        sizes[index] += sumThreads[i].size;
 
-        clusters[i].sum_x = 0;
-        clusters[i].sum_y = 0;
-        clusters[i].size = 0;
+        sumThreads[i].sum_x = 0;
+        sumThreads[i].sum_y = 0;
+        sumThreads[i].size = 0;
     }
 
     centroid[index].x = centroid[index].x / sizes[index];
@@ -129,40 +129,40 @@ int main(int argc, char*argv[]){
     int iteration = 0;
     point *points;
     point *centroids;
-    cluster *clusters;
+    sumThread *sumThreads;
     int *sizes;
 
     // Aloca memoria
     points = (point *) malloc(sizeof(struct Point) * number_points);
     centroids = (point *) malloc(sizeof(struct Point) * number_clusters);
-    clusters = (cluster *) malloc(sizeof(struct Cluster) * number_blocks * number_threadspblock * number_clusters);
+    sumThreads = (sumThread *) malloc(sizeof(struct SumThread) * number_blocks * number_threadspblock * number_clusters);
     sizes = (int *) malloc(sizeof(int) * number_clusters);
     
     // Inicializacao de variaveis da GPU
     point* gpu_points;
     point* gpu_centroids;
-    cluster *gpu_clusters;
+    sumThread* gpu_sumThreads;
     int* gpu_sizes;
 
     
     // Mallocar as variáveis na GPU
     cudaMalloc(&gpu_points, number_points * sizeof(struct Point));
     cudaMalloc(&gpu_centroids, number_clusters * sizeof(struct Point));
-    cudaMalloc(&gpu_clusters, number_blocks * number_threadspblock * number_clusters * sizeof(struct Cluster));
+    cudaMalloc(&gpu_sumThreads, number_blocks * number_threadspblock * number_clusters * sizeof(struct SumThread));
     cudaMalloc(&gpu_sizes, number_clusters * sizeof(int));
 
     // Insere valores nos arrays dos pontos e centroides
-    inicializa(points, centroids, clusters, sizes, number_points, number_clusters, number_blocks, number_threadspblock);
+    inicializa(points, centroids, sumThreads, sizes, number_points, number_clusters, number_blocks, number_threadspblock);
 
     // Copy data and clusters to the GPU
     cudaMemcpy(gpu_points, points, number_points * sizeof(struct Point), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_centroids, centroids, number_clusters * sizeof(struct Point), cudaMemcpyHostToDevice);
-    cudaMemcpy(gpu_clusters, clusters, number_blocks * number_threadspblock * number_clusters * sizeof(struct Cluster), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_sumThreads, sumThreads, number_blocks * number_threadspblock * number_clusters * sizeof(struct SumThread), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_sizes, sizes, number_clusters * sizeof(int), cudaMemcpyHostToDevice);
 
     while(iteration < 21) {
-        atribuiCluster<<<number_blocks, number_threadspblock>>>(gpu_points, gpu_centroids, gpu_clusters, number_points, number_clusters, number_blocks, number_threadspblock);
-        calculaCentroids<<<1, number_clusters>>>(gpu_centroids, gpu_clusters, gpu_sizes, number_clusters, number_blocks, number_threadspblock);
+        atribuiCluster<<<number_blocks, number_threadspblock>>>(gpu_points, gpu_centroids, gpu_sumThreads, number_points, number_clusters, number_blocks, number_threadspblock);
+        calculaCentroids<<<1, number_clusters>>>(gpu_centroids, gpu_sumThreads, gpu_sizes, number_clusters, number_blocks, number_threadspblock);
         iteration++;
     }
 
@@ -174,13 +174,13 @@ int main(int argc, char*argv[]){
     // Libertar a memoria da GPU
     cudaFree(gpu_points);
     cudaFree(gpu_centroids);
-    cudaFree(gpu_clusters);
+    cudaFree(gpu_sumThreads);
     cudaFree(gpu_sizes);
 
     // Libertar a memoria
     free(points);
     free(centroids);
-    free(clusters);
+    free(sumThreads);
     free(sizes);
 
     end = clock();
