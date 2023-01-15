@@ -17,7 +17,7 @@ typedef struct SumThread{
     int size;
 } sumThread;
 
-__host__ void inicializa(point *, point *, sumThread *, int *, int, int, int, int);
-__global__ void calculaCluster(point *, point *, sumThread *, int, int, int, int);
-__global__ void calculaCentroids(point *, sumThread *, int *, int, int, int);
+__host__ void inicializa(point *, point *, sumThread *, int *, int, int, int);
+__global__ void calculaCluster(point *, point *, sumThread *, int, int, int);
+__global__ void calculaCentroids(point *, sumThread *, int *, int, int);
 __host__ void printInfo(int, point *, int *, int, int);

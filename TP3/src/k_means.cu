@@ -11,7 +11,7 @@ int* gpu_cluster_attribution;
 
 
 // Funcao que inicializa a lista de pontos e os clusters de forma aleatoria
-__host__ void inicializa(point *points, point *centroids, sumThread *sumThreads, int *sizes, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
+__host__ void inicializa(point *points, point *centroids, sumThread *sumThreads, int *sizes, int number_points, int number_clusters, int number_totalThreads){
 
     srand(10);
     
@@ -27,7 +27,7 @@ __host__ void inicializa(point *points, point *centroids, sumThread *sumThreads,
         centroids[i].y = points[i].y;
     }
 
-    for(int i = 0; i < number_blocks * number_threadspblock; i++){
+    for(int i = 0; i < number_totalThreads; i++){
         sumThreads[i].sum_x = 0;
         sumThreads[i].sum_y = 0;
         sumThreads[i].size = 0;
@@ -38,16 +38,13 @@ __host__ void inicializa(point *points, point *centroids, sumThread *sumThreads,
     }
 }
 
-__global__ void calculaCluster(point *points, point *centroid, sumThread *sumThreads, int number_points, int number_clusters, int number_blocks, int number_threadspblock){
-
-    // Numero total de threads
-    int total_threads = number_blocks * number_threadspblock;
+__global__ void calculaCluster(point *points, point *centroid, sumThread *sumThreads, int number_points, int number_clusters, int number_totalThreads){
 
     // Id da thread
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Percorre todos os pontos
-    for (int i = index; i < number_points; i += total_threads){
+    for (int i = index; i < number_points; i += number_totalThreads){
         // Determina a distancia para o primeiro cluster
         float min = ((centroid[0].x - points[i].x) * (centroid[0].x - points[i].x)) + ((centroid[0].y - points[i].y) * (centroid[0].y - points[i].y));
         
@@ -68,7 +65,7 @@ __global__ void calculaCluster(point *points, point *centroid, sumThread *sumThr
     }
 }
 
-__global__ void calculaCentroids(point *centroid, sumThread* sumThreads, int * sizes, int number_clusters, int number_blocks, int number_threadspblock){
+__global__ void calculaCentroids(point *centroid, sumThread* sumThreads, int * sizes, int number_clusters, int number_totalThreads){
 
     // Id da thread
     int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -79,7 +76,7 @@ __global__ void calculaCentroids(point *centroid, sumThread* sumThreads, int * s
     sizes[index] = 0;
 
     // Percorre o array clusters e efetua o somatorio dos somatorios efetuados por cada thread no kernel anterior
-    for (int i = index; i < number_blocks * number_threadspblock * number_clusters; i += number_clusters){
+    for (int i = index; i < number_totalThreads * number_clusters; i += number_clusters){
         // Efetua o somatorio das coordenadas
         centroid[index].x += sumThreads[i].sum_x;
         centroid[index].y += sumThreads[i].sum_y;
@@ -125,6 +122,8 @@ int main(int argc, char*argv[]){
     int number_blocks = atoi(argv[3]);
     int number_threadspblock = atoi(argv[4]);
 
+    int number_totalThreads = number_blocks * number_threadspblock;
+
     // Inicializacao de variaveis
     int iteration = 0;
     point *points;
@@ -152,7 +151,7 @@ int main(int argc, char*argv[]){
     cudaMalloc(&gpu_sizes, number_clusters * sizeof(int));
 
     // Insere valores nos arrays dos pontos e centroides
-    inicializa(points, centroids, sumThreads, sizes, number_points, number_clusters, number_blocks, number_threadspblock);
+    inicializa(points, centroids, sumThreads, sizes, number_points, number_clusters, number_totalThreads);
 
     // Copy data and clusters to the GPU
     cudaMemcpy(gpu_points, points, number_points * sizeof(struct Point), cudaMemcpyHostToDevice);
@@ -161,8 +160,8 @@ int main(int argc, char*argv[]){
     cudaMemcpy(gpu_sizes, sizes, number_clusters * sizeof(int), cudaMemcpyHostToDevice);
 
     while(iteration < 21) {
-        calculaCluster<<<number_blocks, number_threadspblock>>>(gpu_points, gpu_centroids, gpu_sumThreads, number_points, number_clusters, number_blocks, number_threadspblock);
-        calculaCentroids<<<1, number_clusters>>>(gpu_centroids, gpu_sumThreads, gpu_sizes, number_clusters, number_blocks, number_threadspblock);
+        calculaCluster<<<number_blocks, number_threadspblock>>>(gpu_points, gpu_centroids, gpu_sumThreads, number_points, number_clusters, number_totalThreads);
+        calculaCentroids<<<1, number_clusters>>>(gpu_centroids, gpu_sumThreads, gpu_sizes, number_clusters, number_totalThreads);
         iteration++;
     }
 
